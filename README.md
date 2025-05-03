@@ -21,8 +21,8 @@ import time
 
 dll = ctypes.CDLL("./CudaGrab.dll")
 
-dll.CreateDirect3DContext.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-dll.CreateDirect3DContext.restype = ctypes.c_ubyte
+dll.CreateContext.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+dll.CreateContext.restype = ctypes.c_ubyte
 dll.CaptureScreen.restype = ctypes.c_ubyte
 dll.PreprocessScreen.argtypes = [ctypes.c_float] * 6
 dll.PreprocessScreen.restype = ctypes.c_ubyte
@@ -34,7 +34,7 @@ screen_height = 1440
 region_width = 600
 region_height = 600
 
-result = dll.CreateDirect3DContext(screen_width, screen_height, region_width, region_height)
+result = dll.CreateContext(screen_width, screen_height, region_width, region_height)
 if result != 0:
     print(f"CreateDirect3DContext failed with code {result}")
     exit(1)
@@ -58,18 +58,18 @@ image_np = host_buffer.reshape((3, region_height, region_width)).transpose(1, 2,
 image_uint8 = np.clip((image_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
 Image.fromarray(image_uint8).save("preprocessed_capture.png")
 
-dll.CleanupDirect3DContext()
+dll.CleanupContext()
 ```
 
 ## Exposed DLL Functions
 
 | Function | Description |
 | -------- | ----------- |
-| `CreateDirect3DContext(width, height, region_width, region_height)` | Initializes D3D11 and CUDA context. |
+| `CreateContext(width, height, region_width, region_height)` | Initializes D3D11 and CUDA context. |
 | `CaptureScreen()` | Captures the screen into a GPU texture. |
 | `PreprocessScreen(meanR, meanG, meanB, stdR, stdG, stdB)` | Normalizes the captured image. |
-| `GetMainBufferPointer()` | Returns the device pointer to normalized data. |
-| `CleanupDirect3DContext()` | Releases all allocated resources. |
+| `GetMainBufferPointer()` | Returns a pointer to the image buffer data (normalized if Preprocess has been called). |
+| `CleanupContext()` | Releases all allocated resources. |
 
 ## Requirements
 - Windows with Direct3D 11 support
