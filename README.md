@@ -19,46 +19,75 @@ import pycuda.autoinit
 from PIL import Image
 import time
 
+
 dll = ctypes.CDLL("./CudaGrab.dll")
+
 
 dll.CreateContext.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 dll.CreateContext.restype = ctypes.c_ubyte
+
+dll.CaptureScreen.argtypes = []
 dll.CaptureScreen.restype = ctypes.c_ubyte
+
 dll.PreprocessScreen.argtypes = [ctypes.c_float] * 6
 dll.PreprocessScreen.restype = ctypes.c_ubyte
+
+dll.GetMainBufferPointer.argtypes = []
 dll.GetMainBufferPointer.restype = ctypes.c_void_p
-dll.CleanupDirect3DContext.restype = None
+
+dll.CleanupContext.argtypes = []
+dll.CleanupContext.restype = None
 
 screen_width = 2560
 screen_height = 1440
 region_width = 600
 region_height = 600
+num_channels = 3
 
 result = dll.CreateContext(screen_width, screen_height, region_width, region_height)
 if result != 0:
-    print(f"CreateDirect3DContext failed with code {result}")
+    print(f"CreateContext failed with code {result}")
     exit(1)
+print("Direct3D and CUDA context created.")
 
-dll.CaptureScreen()
+start_time = time.perf_counter()
+
+result = dll.CaptureScreen()
+if result != 0:
+    print(f"CaptureScreen failed with code {result}")
+    dll.CleanupContext()
+    exit(2)
+print("Screen captured.")
 
 mean = [0.485, 0.456, 0.406]
 std = [0.229, 0.224, 0.225]
 result = dll.PreprocessScreen(*(mean + std))
 if result != 0:
     print(f"PreprocessScreen failed with code {result}")
-    dll.CleanupDirect3DContext()
+    dll.CleanupContext()
     exit(3)
+print("Preprocessing complete.")
+
+end_time = time.perf_counter()
+print(f"Total time (Capture + Preprocess): {end_time - start_time:.4f} seconds")
 
 gpu_ptr = dll.GetMainBufferPointer()
-buffer_size = region_width * region_height * 3
+if not gpu_ptr:
+    print("Failed to get GPU buffer pointer.")
+    dll.CleanupDirect3DContext()
+    exit(4)
+
+buffer_size = region_width * region_height * num_channels
 host_buffer = np.empty(buffer_size, dtype=np.float32)
 cuda.memcpy_dtoh(host_buffer, gpu_ptr)
 
 image_np = host_buffer.reshape((3, region_height, region_width)).transpose(1, 2, 0)
 image_uint8 = np.clip((image_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
 Image.fromarray(image_uint8).save("preprocessed_capture.png")
+print("Saved as 'preprocessed_capture.png'")
 
 dll.CleanupContext()
+print("Cleanup done.")
 ```
 
 ## Exposed DLL Functions
