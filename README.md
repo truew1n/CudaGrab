@@ -74,7 +74,7 @@ print(f"Total time (Capture + Preprocess): {end_time - start_time:.4f} seconds")
 gpu_ptr = dll.GetMainBufferPointer()
 if not gpu_ptr:
     print("Failed to get GPU buffer pointer.")
-    dll.CleanupDirect3DContext()
+    dll.CleanupContext()
     exit(4)
 
 buffer_size = region_width * region_height * num_channels
