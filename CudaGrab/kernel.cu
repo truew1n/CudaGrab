@@ -40,7 +40,7 @@ __global__ void Preprocess(
     Out[OutIdxB] = ((float)In[InIdx + 0] / 255.0f - MeanB) / StdB;
 }
 
-extern "C" __declspec(dllexport) void CleanupDirect3DContext() {
+extern "C" __declspec(dllexport) void CleanupContext() {
     if (G_CudaResource) {
         cudaGraphicsUnmapResources(1, &G_CudaResource, 0);
         cudaGraphicsUnregisterResource(G_CudaResource);
@@ -72,7 +72,7 @@ extern "C" __declspec(dllexport) void CleanupDirect3DContext() {
     }
 }
 
-extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Height, int RegionWidth, int RegionHeight)
+extern "C" __declspec(dllexport) BYTE CreateContext(int Width, int Height, int RegionWidth, int RegionHeight)
 {
     G_Width = Width;
     G_Height = Height;
@@ -99,7 +99,7 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
     cudaError_t CudaStatus = cudaD3D11SetDirect3DDevice(G_D3DDevice);
     if (CudaStatus != cudaSuccess) {
         printf("Failed to set CUDA Direct3D device: %s\n", cudaGetErrorString(CudaStatus));
-        CleanupDirect3DContext();
+        CleanupContext();
         return 2;
     }
 
@@ -107,7 +107,7 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
     HResult = CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void **)&DxgiFactory);
     if (FAILED(HResult)) {
         printf("Failed to create DXGI factory: %ld\n", HResult);
-        CleanupDirect3DContext();
+        CleanupContext();
         return 3;
     }
 
@@ -116,7 +116,7 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
     if (FAILED(HResult)) {
         printf("Failed to enumerate adapters: %ld\n", HResult);
         DxgiFactory->Release();
-        CleanupDirect3DContext();
+        CleanupContext();
         return 4;
     }
 
@@ -126,7 +126,7 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
         printf("Failed to enumerate outputs: %ld\n", HResult);
         Adapter->Release();
         DxgiFactory->Release();
-        CleanupDirect3DContext();
+        CleanupContext();
         return 5;
     }
 
@@ -137,7 +137,7 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
         printf("Failed to get IDXGIOutput1: %ld\n", HResult);
         Adapter->Release();
         DxgiFactory->Release();
-        CleanupDirect3DContext();
+        CleanupContext();
         return 6;
     }
 
@@ -147,7 +147,7 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
     DxgiFactory->Release();
     if (FAILED(HResult)) {
         printf("Failed to create output duplication: %ld\n", HResult);
-        CleanupDirect3DContext();
+        CleanupContext();
         return 7;
     }
 
@@ -164,21 +164,21 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
     HResult = G_D3DDevice->CreateTexture2D(&TextureDesc, nullptr, &G_ScreenTexture);
     if (FAILED(HResult)) {
         printf("Failed to create texture for region: %ld\n", HResult);
-        CleanupDirect3DContext();
+        CleanupContext();
         return 8;
     }
 
     CudaStatus = cudaGraphicsD3D11RegisterResource(&G_CudaResource, G_ScreenTexture, cudaGraphicsRegisterFlagsNone);
     if (CudaStatus != cudaSuccess) {
         printf("Failed to register D3D resource with CUDA: %s\n", cudaGetErrorString(CudaStatus));
-        CleanupDirect3DContext();
+        CleanupContext();
         return 9;
     }
 
     CudaStatus = cudaGraphicsMapResources(1, &G_CudaResource, 0);
     if (CudaStatus != cudaSuccess) {
         printf("Failed to map CUDA resource: %s\n", cudaGetErrorString(CudaStatus));
-        CleanupDirect3DContext();
+        CleanupContext();
         return 10;
     }
 
@@ -191,14 +191,14 @@ extern "C" __declspec(dllexport) BYTE CreateDirect3DContext(int Width, int Heigh
     CudaStatus = cudaMalloc(&G_MainBuffer, 3 * G_RegionWidth * G_RegionHeight * sizeof(float));
     if (CudaStatus != cudaSuccess) {
         printf("Failed to allocate CUDA main buffer: %s\n", cudaGetErrorString(CudaStatus));
-        CleanupDirect3DContext();
+        CleanupContext();
         return 12;
     }
 
     if (!G_D3DDevice || !G_D3DContext || !G_ScreenTexture || !G_OutputDuplication || !G_CudaResource || !G_TempBuffer || !G_MainBuffer) {
         printf("Incomplete initialization: Device=%p, Context=%p, Texture=%p, OutputDuplication=%p, CudaResource=%p, TempBuffer=%p, MainBuffer=%p\n",
             G_D3DDevice, G_D3DContext, G_ScreenTexture, G_OutputDuplication, G_CudaResource, G_TempBuffer, G_MainBuffer);
-        CleanupDirect3DContext();
+        CleanupContext();
         return 13;
     }
 
