@@ -19,17 +19,15 @@ import pycuda.autoinit
 from PIL import Image
 import time
 
-
 dll = ctypes.CDLL("./CudaGrab.dll")
 
-
-dll.CreateContext.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+dll.CreateContext.argtypes = [ctypes.c_int, ctypes.c_int]
 dll.CreateContext.restype = ctypes.c_ubyte
 
 dll.CaptureScreen.argtypes = []
 dll.CaptureScreen.restype = ctypes.c_ubyte
 
-dll.PreprocessScreen.argtypes = [ctypes.c_float] * 6
+dll.PreprocessScreen.argtypes = []
 dll.PreprocessScreen.restype = ctypes.c_ubyte
 
 dll.GetMainBufferPointer.argtypes = []
@@ -38,13 +36,11 @@ dll.GetMainBufferPointer.restype = ctypes.c_void_p
 dll.CleanupContext.argtypes = []
 dll.CleanupContext.restype = None
 
-screen_width = 2560
-screen_height = 1440
 region_width = 600
 region_height = 600
 num_channels = 3
 
-result = dll.CreateContext(screen_width, screen_height, region_width, region_height)
+result = dll.CreateContext(region_width, region_height)
 if result != 0:
     print(f"CreateContext failed with code {result}")
     exit(1)
@@ -59,9 +55,7 @@ if result != 0:
     exit(2)
 print("Screen captured.")
 
-mean = [0.485, 0.456, 0.406]
-std = [0.229, 0.224, 0.225]
-result = dll.PreprocessScreen(*(mean + std))
+result = dll.PreprocessScreen()
 if result != 0:
     print(f"PreprocessScreen failed with code {result}")
     dll.CleanupContext()
@@ -79,10 +73,10 @@ if not gpu_ptr:
 
 buffer_size = region_width * region_height * num_channels
 host_buffer = np.empty(buffer_size, dtype=np.float32)
-cuda.memcpy_dtoh(host_buffer, gpu_ptr)
 
+cuda.memcpy_dtoh(host_buffer, gpu_ptr)
 image_np = host_buffer.reshape((3, region_height, region_width)).transpose(1, 2, 0)
-image_uint8 = np.clip((image_np * std + mean) * 255.0, 0, 255).astype(np.uint8)
+image_uint8 = np.clip(image_np * 255.0, 0, 255).astype(np.uint8)
 Image.fromarray(image_uint8).save("preprocessed_capture.png")
 print("Saved as 'preprocessed_capture.png'")
 
@@ -94,10 +88,10 @@ print("Cleanup done.")
 
 | Function | Description |
 | -------- | ----------- |
-| `CreateContext(width, height, region_width, region_height)` | Initializes D3D11 and CUDA context. |
+| `CreateContext(region_width, region_height)` | Initializes D3D11 and CUDA context. |
 | `CaptureScreen()` | Captures the screen into a GPU texture. |
-| `PreprocessScreen(meanR, meanG, meanB, stdR, stdG, stdB)` | Normalizes the captured image. |
-| `GetMainBufferPointer()` | Returns a pointer to the image buffer data (normalized if Preprocess has been called). |
+| `PreprocessScreen()` | Normalizes the captured image. |
+| `GetMainBufferPointer()` | Returns a pointer to the image buffer data. |
 | `CleanupContext()` | Releases all allocated resources. |
 
 ## Requirements
