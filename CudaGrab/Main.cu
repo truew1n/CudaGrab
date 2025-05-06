@@ -21,9 +21,8 @@ static unsigned char *G_TempBuffer = nullptr;
 static float *G_MainBuffer = nullptr;
 
 __global__ void Preprocess(
-    float *Out, unsigned char *In, int Width, int Height,
-    float MeanR, float MeanG, float MeanB,
-    float StdR, float StdG, float StdB
+    float *Out, unsigned char *In,
+    int Width, int Height
 )
 {
     int X = blockIdx.x * blockDim.x + threadIdx.x;
@@ -35,9 +34,9 @@ __global__ void Preprocess(
     int OutIdxG = (1 * Height + Y) * Width + X;
     int OutIdxB = (2 * Height + Y) * Width + X;
 
-    Out[OutIdxR] = ((float)In[InIdx + 2] / 255.0f - MeanR) / StdR;
-    Out[OutIdxG] = ((float)In[InIdx + 1] / 255.0f - MeanG) / StdG;
-    Out[OutIdxB] = ((float)In[InIdx + 0] / 255.0f - MeanB) / StdB;
+    Out[OutIdxR] = (float)In[InIdx + 2] / 255.0f;
+    Out[OutIdxG] = (float)In[InIdx + 1] / 255.0f;
+    Out[OutIdxB] = (float)In[InIdx + 0] / 255.0f;
 }
 
 extern "C" __declspec(dllexport) void CleanupContext() {
@@ -72,10 +71,8 @@ extern "C" __declspec(dllexport) void CleanupContext() {
     }
 }
 
-extern "C" __declspec(dllexport) BYTE CreateContext(int Width, int Height, int RegionWidth, int RegionHeight)
+extern "C" __declspec(dllexport) BYTE CreateContext(int RegionWidth, int RegionHeight)
 {
-    G_Width = Width;
-    G_Height = Height;
     G_RegionWidth = RegionWidth;
     G_RegionHeight = RegionHeight;
 
@@ -141,6 +138,14 @@ extern "C" __declspec(dllexport) BYTE CreateContext(int Width, int Height, int R
         return 6;
     }
 
+    DXGI_OUTPUT_DESC OutputDesc;
+    HResult = Output1->GetDesc(&OutputDesc);
+    if (SUCCEEDED(HResult)) {
+        G_Width = OutputDesc.DesktopCoordinates.right - OutputDesc.DesktopCoordinates.left;
+        G_Height = OutputDesc.DesktopCoordinates.bottom - OutputDesc.DesktopCoordinates.top;
+        printf("Actual screen resolution: %d x %d\n", G_Width, G_Height);
+    }
+
     HResult = Output1->DuplicateOutput(G_D3DDevice, &G_OutputDuplication);
     Output1->Release();
     Adapter->Release();
@@ -188,7 +193,7 @@ extern "C" __declspec(dllexport) BYTE CreateContext(int Width, int Height, int R
         return 11;
     }
 
-    CudaStatus = cudaMalloc(&G_MainBuffer, 3 * G_RegionWidth * G_RegionHeight * sizeof(float));
+    CudaStatus = cudaMalloc(&G_MainBuffer, G_RegionWidth * G_RegionHeight * 3 * sizeof(float));
     if (CudaStatus != cudaSuccess) {
         printf("Failed to allocate CUDA main buffer: %s\n", cudaGetErrorString(CudaStatus));
         CleanupContext();
@@ -251,7 +256,9 @@ extern "C" __declspec(dllexport) BYTE CaptureScreen()
     Box.bottom = StartY + G_RegionHeight;
     Box.front = 0;
     Box.back = 1;
+
     G_D3DContext->CopySubresourceRegion(G_ScreenTexture, 0, 0, 0, 0, DesktopTexture, 0, &Box);
+    G_D3DContext->Flush();
 
     DesktopTexture->Release();
     G_OutputDuplication->ReleaseFrame();
@@ -259,10 +266,7 @@ extern "C" __declspec(dllexport) BYTE CaptureScreen()
     return 0;
 }
 
-extern "C" __declspec(dllexport) BYTE PreprocessScreen(
-    float MeanR, float MeanG, float MeanB,
-    float StdR, float StdG, float StdB
-)
+extern "C" __declspec(dllexport) BYTE PreprocessScreen()
 {
     if (G_CudaResource == nullptr || G_TempBuffer == nullptr || G_MainBuffer == nullptr) {
         printf("CUDA resource, temp buffer, or main buffer not initialized\n");
@@ -286,14 +290,10 @@ extern "C" __declspec(dllexport) BYTE PreprocessScreen(
         cudaMemcpyDeviceToDevice
     );
 
-    dim3 BlockDim(16, 16);
+    dim3 BlockDim(32, 32);
     dim3 GridDim((G_RegionWidth + BlockDim.x - 1) / BlockDim.x, (G_RegionHeight + BlockDim.y - 1) / BlockDim.y);
 
-    Preprocess<<<GridDim, BlockDim>>>(
-        G_MainBuffer, G_TempBuffer, G_RegionWidth, G_RegionHeight,
-        MeanR, MeanG, MeanB,
-        StdR, StdG, StdB
-    );
+    Preprocess<<<GridDim, BlockDim>>>(G_MainBuffer, G_TempBuffer, G_RegionWidth, G_RegionHeight);
 
     CudaStatus = cudaGetLastError();
     if (CudaStatus != cudaSuccess) {
